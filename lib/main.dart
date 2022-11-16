@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:math';
 
+import 'package:http/http.dart' as http;
+
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
@@ -8,6 +10,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:push_notifier/main_screen.dart';
 import 'package:push_notifier/navigation.dart';
+import 'package:push_notifier/user.dart';
+import 'package:push_notifier/weather.dart';
+import 'package:push_notifier/weather_details.dart';
 
 FlutterLocalNotificationsPlugin flutterLocalNotificationPlugin =
     FlutterLocalNotificationsPlugin();
@@ -22,23 +27,50 @@ selectNotification(NotificationResponse notification) async {
 
   print("Payload Input ${notification.input}");
   print("Payload ${notification.payload}");
-  print("Action ID ${notification.actionId}");
-  print("ID ${notification.id}");
+  var payloadResponse = notification.payload;
 
-  print("Here at select notification");
-  try {
-    if (notification.payload != null) {
-      print("Payload clicked");
-      _navigatorKey.currentState?.push(MaterialPageRoute(
-          builder: (context) => MainScreen(args: notification.payload)));
-    } else {}
-  } catch (e) {}
+  Map<String, dynamic> weatherMap = json.decode(payloadResponse!);
+
+  WeatherForecast weather = WeatherForecast.fromJson(weatherMap);
+  String latitude = weather.latitude!;
+  String longitude = weather.longitude!;
+  print("Lat $latitude");
+  print("Long $longitude");
+  APICall(latitude, longitude);
   return;
 }
 
-// Future<void> _firebaseMessagingforegroundHandler(RemoteMessage message) async {
-//   print("Handling a foregroundmessage ${message.messageId}");
-// }
+void APICall(String latitude, String longitude) async {
+  var url =
+      'https://api.openweathermap.org/data/2.5/weather?lat=$latitude&lon=$longitude&appid=9d9a9e48647a4facb66334d9a0fbf599';
+  var response = await http.get(Uri.parse(url));
+  print("API Call Response $response");
+  print("API Call Response Body ${response.body}");
+  Map<String, dynamic> parsedWeather = json.decode(response.body);
+  print("Parsed Weather $parsedWeather");
+  String lat = parsedWeather['coord']['lat'].toString();
+  String lon = parsedWeather['coord']['lon'].toString();
+  String country = parsedWeather['sys']['country'];
+  String address = parsedWeather['name'];
+  String maxTemp = parsedWeather['main']['temp_max'].toString();
+  String minTemp = parsedWeather['main']['temp_min'].toString();
+  WeatherDetails weatherDetails = WeatherDetails(
+    address: address,
+    latitude: lat,
+    longitude: lon,
+    country: country,
+    maxTemp: maxTemp,
+    minTemp: minTemp,
+  );
+  try {
+    if (response.body != null) {
+      _navigatorKey.currentState?.push(MaterialPageRoute(
+          builder: (context) => MainScreen(args: weatherDetails)));
+    }
+  } catch (e) {
+    print(e);
+  }
+}
 
 initInfo() {
   var androidInitialize =
@@ -92,34 +124,12 @@ initInfo() {
   });
 }
 
-Future<void> setupInteractedMessage() async {
-  print("I am setup interact message");
-  // Get any messages which caused the application to open from
-  // a terminated state.
-  RemoteMessage? initialMessage =
-      await FirebaseMessaging.instance.getInitialMessage();
-  print("Initial Message $initialMessage");
-  if (initialMessage != null) {
-    _handleMessage(initialMessage);
-  }
-
-  // Also handle any interaction when the app is in the background via a
-  // Stream listener
-  FirebaseMessaging.onMessageOpenedApp.listen(_handleMessage);
-}
-
-void _handleMessage(RemoteMessage message) {
-  _navigatorKey.currentState?.push(MaterialPageRoute(
-      builder: (context) => MainScreen(args: message.notification!.body)));
-}
-
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
   await FirebaseMessaging.instance.getInitialMessage();
   FirebaseMessaging.onMessageOpenedApp;
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingbackgroundHandler);
-  setupInteractedMessage();
   runApp(MyApp());
 }
 
@@ -133,6 +143,14 @@ class MyApp extends StatelessWidget {
         title: 'Flutter Demo',
         theme: ThemeData(
           primarySwatch: Colors.blue,
+          textTheme: const TextTheme(
+            displayMedium: TextStyle(
+              fontSize: 23,
+            ),
+            displaySmall: TextStyle(
+              fontSize: 16,
+            ),
+          ),
         ),
         home: Mainscreen(),
         routes: {
@@ -178,7 +196,6 @@ class _MainscreenState extends State<Mainscreen> {
     await FirebaseFirestore.instance.collection("UserTokens").doc("User1").set({
       'token': token,
     });
-    // await FirebaseDatabase.instance.reference.child('');
     print("Token saved");
   }
 
